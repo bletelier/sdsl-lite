@@ -44,6 +44,9 @@ namespace sdsl {
         void copy(const initializable_array_classic &o){
             D = o.D;
             init_value = o.init_value;
+            V.reserve(o.V.capacity());
+            S.reserve(o.S.capacity());
+            U.reserve(o.U.capacity());
             V = o.V;
             S = o.S;
             U = o.U;
@@ -183,6 +186,7 @@ namespace sdsl {
         void copy(const initializable_array &o){
             n = o.n;
             init_value = o.init_value;
+            A.reserve(o.A.capacity());
             A = o.A;
             W = o.W;
         }
@@ -253,7 +257,7 @@ namespace sdsl {
             std::swap(n, o.n);
             std::swap(init_value, o.init_value);
             std::swap(A, o.A);
-            std::swap(W, o.W);
+            W.swap(o.W);
         }
 
         array_t atPos(const uint64_t i) const
