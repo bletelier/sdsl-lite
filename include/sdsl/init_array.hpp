@@ -22,6 +22,7 @@
 #define INIT_ARRAY
 
 #include <cstdint>
+#include <vector>
 
 using namespace std;
 
