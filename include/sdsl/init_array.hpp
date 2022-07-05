@@ -38,7 +38,6 @@ namespace sdsl {
         std::vector<array_t> V;  // array
         std::vector<array_t> S;
         std::vector<array_t> U; // auxiliary array
-
         uint64_t top;
 
         void copy(const initializable_array_classic &o){
@@ -50,6 +49,7 @@ namespace sdsl {
             V = o.V;
             S = o.S;
             U = o.U;
+            top = o.top;
         }
 
     public:
@@ -103,6 +103,7 @@ namespace sdsl {
                 V = std::move(o.V);
                 S = std::move(o.S);
                 U = std::move(o.U);
+                top = o.top;
             }
             return *this;
         }
@@ -114,6 +115,7 @@ namespace sdsl {
             std::swap(V, o.V);
             std::swap(S, o.S);
             std::swap(U, o.U);
+            std::swap(top, o.top);
         }
 
 
