@@ -1376,6 +1376,62 @@ class wm_int
             }
         }
 
+
+
+
+
+    //Implemented by Adrian Gomez-Brandon
+    //! count_range_search_2d searches points in the index interval [lb..rb] and value interval [vlb..vrb].
+    /*! \param lb     Left bound of index interval (inclusive)
+     *  \param rb     Right bound of index interval (inclusive)
+     *  \param vlb    Left bound of value interval (inclusive)
+     *  \param vrb    Right bound of value interval (inclusive)
+     *  \return  #of points in the ranges
+     */
+
+    size_type count_range_search_2d(size_type lb, size_type rb,
+                                    value_type vlb, value_type vrb) const{
+        if (vrb > (1ULL << m_max_level)) vrb = (1ULL << m_max_level);
+        if (vlb > vrb) return 0;
+        size_type cnt_answers = 0;
+        _count_range_search_2d(root(), {lb, rb}, vlb, vrb, 0,  cnt_answers);
+        return cnt_answers;
+    }
+
+    void _count_range_search_2d(const node_type &&v, const range_type &&r, const value_type vlb,
+                          const value_type vrb, const size_type ilb, size_type& cnt_answers) const {
+        using std::get;
+        if (get<0>(r) > get<1>(r)) return;
+        if (v.level == m_max_level ) { //In a leaf
+            cnt_answers += sdsl::size(r);
+            return;
+        }
+        size_type irb = ilb + (1ULL << (m_max_level-v.level));
+        //The range of values from the leaves that are descendants of
+        // the current node is within [vlb, vrb]
+        if(vlb >= ilb && irb <= vrb){
+            cnt_answers += sdsl::size(r);
+            return;
+        }
+
+        //Continue with children nodes
+        size_type mid = (irb + ilb)>>1;
+        auto c_v = expand(v);
+        auto c_r = expand(v, r);
+
+        //Check if the range of the left child is not empty and
+        // its range of values intersects with [vlb, vrb]
+        if (!sdsl::empty(get<0>(c_r)) && mid && vlb < mid) {
+            _count_range_search_2d(get<0>(c_v),get<0>(c_r), vlb, std::min(vrb,mid-1), ilb, cnt_answers);
+        }
+
+        //Check if the range of the right child is not empty and
+        // its range of values intersects with [vlb, vrb]
+        if (!sdsl::empty(get<1>(c_r)) && vrb >= mid) {
+            _count_range_search_2d(get<1>(c_v), get<1>(c_r), std::max(mid, vlb), vrb, mid, cnt_answers);
+        }
+    }
+
         //! Returns a const_iterator to the first element.
         const_iterator begin()const
         {
