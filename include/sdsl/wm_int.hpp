@@ -1389,7 +1389,47 @@ class wm_int
      *  \return  #of points in the ranges
      */
 
+
     size_type count_range_search_2d(size_type lb, size_type rb,
+                                    value_type vlb, value_type vrb) const{
+
+        typedef struct {
+            node_type node;
+            range_type range;
+            size_type ilb;
+            size_type irb;
+        } nrv_type;
+
+        typedef std::stack<nrv_type> stack_type;
+
+
+        auto nvrb = (1ULL<< m_max_level)-1;
+        vrb = (vrb > nvrb) ? nvrb : vrb;
+
+        size_type cnt_answers = 0;
+        stack_type stack;
+        stack.emplace(nrv_type{root(), {lb, rb}, 0, nvrb});
+        while (!stack.empty()) {
+            nrv_type x = stack.top(); stack.pop();
+            if(is_leaf(x.node) || (vlb >= x.ilb && x.irb <= vrb)) {
+                cnt_answers += sdsl::size(x.range);
+            }else{
+                auto child        = expand(x.node);
+                auto child_ranges = expand(x.node, x.range);
+                auto mid          = (x.ilb + x.irb+1)>>1;
+
+                if(!sdsl::empty(get<0>(child_ranges)) && vlb < mid) {
+                    stack.emplace(nrv_type{get<0>(child), get<0>(child_ranges), x.ilb, mid - 1});
+                }
+                if(!sdsl::empty(get<1>(child_ranges)) && vrb >= mid) {
+                    stack.emplace(nrv_type{get<1>(child), get<1>(child_ranges), mid, x.irb});
+                }
+            }
+        }
+        return cnt_answers;
+    }
+
+    size_type count_range_search_2d_v2(size_type lb, size_type rb,
                                     value_type vlb, value_type vrb) const{
         if (vrb > (1ULL << m_max_level)) vrb = (1ULL << m_max_level);
         if (vlb > vrb) return 0;
@@ -1408,7 +1448,7 @@ class wm_int
         }
         size_type irb = ilb + (1ULL << (m_max_level-v.level));
         //The range of values from the leaves that are descendants of
-        // the current node is within [vlb, vrb]
+        // the current node is within [vlb, vrb].
         if(vlb >= ilb && irb <= vrb){
             cnt_answers += sdsl::size(r);
             return;
