@@ -1418,11 +1418,42 @@ class wm_int
                 auto child_ranges = expand(x.node, x.range);
                 auto mid          = (x.ilb + x.irb+1)>>1;
 
-                if(!sdsl::empty(get<0>(child_ranges)) && vlb < mid) {
+                if(!sdsl::empty(get<0>(child_ranges)) && mid && vlb < mid) {
                     stack.emplace(nrv_type{get<0>(child), get<0>(child_ranges), x.ilb, mid - 1});
                 }
                 if(!sdsl::empty(get<1>(child_ranges)) && vrb >= mid) {
                     stack.emplace(nrv_type{get<1>(child), get<1>(child_ranges), mid, x.irb});
+                }
+            }
+        }
+        return cnt_answers;
+    }
+
+    size_type count_distinct_values(size_type lb, size_type rb) const{
+
+        typedef struct {
+            node_type node;
+            range_type range;
+        } nr_type;
+
+        typedef std::stack<nr_type> stack_type;
+
+        size_type cnt_answers = 0;
+        stack_type stack;
+        stack.emplace(nr_type{root(), {lb, rb}});
+        while (!stack.empty()) {
+            nr_type x = stack.top(); stack.pop();
+            if(is_leaf(x.node)) {
+                ++cnt_answers;
+            }else{
+                auto child        = expand(x.node);
+                auto child_ranges = expand(x.node, x.range);
+
+                if(!sdsl::empty(get<0>(child_ranges))) {
+                    stack.emplace(nr_type{get<0>(child), get<0>(child_ranges)});
+                }
+                if(!sdsl::empty(get<1>(child_ranges))) {
+                    stack.emplace(nr_type{get<1>(child), get<1>(child_ranges)});
                 }
             }
         }
