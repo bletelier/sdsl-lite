@@ -1398,7 +1398,7 @@ class wm_int
         return cnt_answers;
     }
 
-    void _count_range_search_2d(const node_type &&v, const range_type &&r, const value_type vlb,
+    void _count_range_search_2d(node_type v, range_type r, const value_type vlb,
                           const value_type vrb, const size_type ilb, size_type& cnt_answers) const {
         using std::get;
         if (get<0>(r) > get<1>(r)) return;
