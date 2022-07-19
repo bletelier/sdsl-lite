@@ -1406,17 +1406,18 @@ class wm_int
         auto nvrb = (1ULL<< m_max_level)-1;
         vrb = (vrb > nvrb) ? nvrb : vrb;
 
-        size_type cnt_answers = 0;
+        std::array<range_type, 2> child_ranges;
+        size_type cnt_answers = 0, rnk;
         stack_type stack;
         stack.emplace(nrv_type{root(), {lb, rb}, 0, nvrb});
         while (!stack.empty()) {
             nrv_type x = stack.top(); stack.pop();
-            if(is_leaf(x.node) || (vlb >= x.ilb && x.irb <= vrb)) {
+            if(is_leaf(x.node) || (vlb <= x.ilb && x.irb <= vrb)) {
                 cnt_answers += sdsl::size(x.range);
             }else{
-                auto child        = expand(x.node);
-                auto child_ranges = expand(x.node, x.range);
-                auto mid          = (x.ilb + x.irb+1)>>1;
+
+                auto child = my_expand(x.node, x.range, child_ranges[0], child_ranges[1], rnk);
+                auto mid   = (x.ilb + x.irb+1)>>1;
 
                 if(!sdsl::empty(get<0>(child_ranges)) && mid && vlb < mid) {
                     stack.emplace(nrv_type{get<0>(child), get<0>(child_ranges), x.ilb, mid - 1});

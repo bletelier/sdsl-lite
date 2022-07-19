@@ -88,12 +88,14 @@ namespace {
         }
 
         wm_int<bit_vector> wt_muthu;
+        wm_int<bit_vector> wt_data;
         sdsl::construct_im(wt_muthu, muthu);
+        sdsl::construct_im(wt_data, data);
 
         uint64_t length = 10;
         for (uint64_t i = 1; i + length - 1 < muthu.size(); ++i) {
             auto obtained = wt_muthu.count_range_search_2d(i, i + length - 1, 0, i - 1);
-            auto expected = distinct(data, i, i + length - 1);
+            auto expected = wt_data.count_distinct_values(i, i + length-1);
             std::cout << i << std::endl;
             ASSERT_EQ(expected, obtained);
         }
