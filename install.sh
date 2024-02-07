@@ -48,12 +48,12 @@ cd build # change into the build directory
 if [ $? != 0 ]; then
 	exit 1
 fi
-./clean.sh # clean-up build directory
+#./clean.sh # clean-up build directory
 if [ $? != 0 ]; then
 	exit 1
 fi
 
-cmake -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_PREFIX="${SDSL_INSTALL_PREFIX}" .. # run cmake 
+arch -x86_64 /usr/local/bin/cmake -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_PREFIX="${SDSL_INSTALL_PREFIX}" .. # run cmake 
 if [ $? != 0 ]; then
 	echo "ERROR: CMake build failed."
 	exit 1

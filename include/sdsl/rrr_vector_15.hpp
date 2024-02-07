@@ -718,6 +718,172 @@ class select_support_rrr<t_b, 15, t_rac, t_k>
         }
 };
 
+    template<uint8_t t_b, class t_rac, uint16_t t_k>
+    class succ_support_rrr<t_b, 15, t_rac, t_k>
+    {
+    public:
+        typedef rrr_vector<15, t_rac, t_k> bit_vector_type;
+        typedef typename bit_vector_type::size_type size_type;
+        typedef rrr_helper<15> rrr_helper_type;
+        typedef typename rrr_helper_type::number_type number_type;
+
+        enum { bit_pat = t_b };
+        enum { bit_pat_len = (uint8_t)1 };
+    private:
+        const bit_vector_type* m_v;
+
+        size_type succ_different_block(size_type &sample_pos, size_type &bt_idx, uint16_t &bt, size_type &btnrp,
+                                       uint16_t &btnrlen, size_type &bt_acc) const{
+
+            //(1) Check if there are additional 1-bits in the current super-block
+            bt_acc += bt;
+            size_type prev_rank = m_v->m_rank[sample_pos];
+            size_type curr_rank = m_v->m_rank[sample_pos+1];
+            if(prev_rank + bt_acc < curr_rank){ //There is more 1-bits in the current super-block
+                ++bt_idx;
+                btnrp += btnrlen;
+                uint64_t end = std::min((sample_pos+1)*t_k, m_v->bt.size());
+                //Traverse the blocks looking for the one with the next 1-bit
+                bool inv = m_v->m_invert[sample_pos];
+                while (bt_idx < end) {
+                    bt = inv ? bit_vector_type::block_size - m_v->m_bt[bt_idx] : m_v->m_bt[bt_idx];
+                    btnrlen = rrr_helper_type::space_for_bt(bt);
+                    if(bt > 0) break;
+                    btnrp += btnrlen;
+                    ++bt_idx;
+                }
+            }else{
+                //(2) Exponential search looking for the next super-block with 1-bits
+                size_type diff = 2;
+                while(sample_pos + diff < m_v->m_rank.size()
+                      && curr_rank == m_v->m_rank[sample_pos + diff]){
+                    diff = diff << 1;
+                }
+                size_type sb_end = std::min(sample_pos + diff, m_v->m_rank.size()-1);
+                size_type sb_beg = sample_pos + (diff >> 1) + 1;
+                size_type idx, rank;
+                while(sb_beg < sb_end){
+                    idx = (sb_beg+sb_end)>>1;
+                    rank = m_v->m_rank[idx];
+                    if (rank > curr_rank){
+                        sb_end = idx;
+                    }else {
+                        sb_beg = idx+1;
+                    }
+                }
+
+
+                //(3) sb_beg-th block contains the next 1-bit
+                sample_pos = sb_beg-1;
+                uint64_t end = std::min((sample_pos+1)*t_k, m_v->bt.size());
+                bool inv = m_v->m_invert[sample_pos];
+                btnrp = m_v->m_btnrp[ sample_pos ];
+                bt_idx = sample_pos*t_k;
+                while (bt_idx < end) {
+                    bt = inv ? bit_vector_type::block_size -m_v->m_bt[bt_idx] : m_v->m_bt[bt_idx];
+                    btnrlen = rrr_helper_type::space_for_bt(bt);
+                    if(bt > 0) break;
+                    btnrp += btnrlen;
+                    ++bt_idx;
+                }
+            }
+            if(bt_idx == m_v->bt.size()){
+                return m_v->size();
+            }
+            number_type btnr = rrr_helper_type::decode_btnr(m_v->m_btnr, btnrp, btnrlen);
+            uint16_t off = 0;
+            rrr_helper_type::decode_next(bt, btnr, off, bit_vector_type::block_size);
+            return bt_idx * bit_vector_type::block_size + off;
+        }
+
+    public:
+
+
+        //! Standard constructor
+        explicit succ_support_rrr(const bit_vector_type* v = nullptr)
+        {
+            set_vector(v);
+        }
+
+        size_type succ(size_type i) const
+        {
+
+            size_type bt_idx = i/bit_vector_type::block_size;
+            uint16_t bt = m_v->m_bt[bt_idx];
+            size_type sample_pos = bt_idx/t_k;
+            bool inv = m_v->m_invert[sample_pos];
+            bt = inv ? bit_vector_type::block_size - bt : bt;
+            if(bt == bit_vector_type::block_size){
+                return i;
+            }
+
+            uint16_t off = i % bit_vector_type::block_size; //i - bt_idx*t_bs;
+            size_type btnrp = m_v->m_btnrp[ sample_pos ];
+            uint16_t bt_aux;
+            size_type bt_acc = 0;
+            //(1) Read up to the current block
+            for (size_type j = sample_pos*t_k; j < bt_idx; ++j) {
+                bt_aux = inv ? bit_vector_type::block_size - m_v->m_bt[j] : m_v->m_bt[j] ;
+                bt_acc += bt_aux;
+                btnrp += rrr_helper_type::space_for_bt(bt_aux);
+            }
+            //(2) Check the current block
+            uint16_t btnrlen = rrr_helper_type::space_for_bt(bt);
+            number_type btnr = rrr_helper_type::decode_btnr(m_v->m_btnr, btnrp, btnrlen);
+            bool ok = rrr_helper_type::decode_next(bt, btnr, off, bit_vector_type::block_size-off);
+            if(!ok){ //(3) Search in a different block
+                if(bt_idx+1 == m_v->bt.size()) return m_v->size();
+                return succ_different_block(sample_pos, bt_idx, bt, btnrp, btnrlen, bt_acc);
+            }
+            return bt_idx * bit_vector_type::block_size + off;
+
+        }
+
+        //! Shorthand for select(i)
+        const size_type operator()(size_type i) const
+        {
+            return succ(i);
+        }
+
+        //! Return the size of the original vector
+        const size_type size() const
+        {
+            return m_v->size();
+        }
+
+        //! Set the supported vector
+        void set_vector(const bit_vector_type* v = nullptr)
+        {
+            m_v = v;
+        }
+
+        //! Assignment operator
+        succ_support_rrr& operator=(const succ_support_rrr& rs)
+        {
+            if (this != &rs) {
+                set_vector(rs.m_v);
+            }
+            return *this;
+        }
+
+        //! Swap method
+        void swap(succ_support_rrr&) {}
+
+        //! Load the data structure from a stream and set the supported vector
+        void load(std::istream&, const bit_vector_type* v = nullptr)
+        {
+            set_vector(v);
+        }
+
+        //! Serializes the data structure into a stream
+        size_type serialize(std::ostream&, structure_tree_node* v = nullptr, std::string name = "") const
+        {
+            structure_tree_node* child = structure_tree::add_child(v, name, util::class_name(*this));
+            structure_tree::add_size(child, 0);
+            return 0;
+        }
+    };
+
 }// end namespace sdsl
 
 #endif

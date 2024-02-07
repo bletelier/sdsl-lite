@@ -44,8 +44,9 @@ namespace sdsl
 {
 
 // Needed for friend declarations.
-template<uint8_t t_b = 1, uint32_t k_sb_rate = 16> class rank_support_hyb;
-template<uint8_t t_b = 1, uint32_t k_sb_rate = 16> class select_support_hyb;
+    template<uint8_t t_b = 1, uint32_t k_sb_rate = 16> class rank_support_hyb;
+    template<uint8_t t_b = 1, uint32_t k_sb_rate = 16> class select_support_hyb;
+    template<uint8_t t_b = 1, uint32_t k_sb_rate = 16> class succ_support_hyb;
 
 //! A hybrid-encoded compressed bitvector representation
 /*!
@@ -68,11 +69,15 @@ class hyb_vector
         typedef rank_support_hyb<0, k_sblock_rate> rank_0_type;
         typedef select_support_hyb<1, k_sblock_rate> select_1_type;
         typedef select_support_hyb<0, k_sblock_rate> select_0_type;
+        typedef succ_support_hyb<1, k_sblock_rate> succ_1_type;
+        typedef succ_support_hyb<0, k_sblock_rate> succ_0_type;
 
         friend class rank_support_hyb<1, k_sblock_rate>;
         friend class rank_support_hyb<0, k_sblock_rate>;
         friend class select_support_hyb<1, k_sblock_rate>;
         friend class select_support_hyb<0, k_sblock_rate>;
+        friend class succ_support_hyb<1, k_sblock_rate>;
+        friend class succ_support_hyb<0, k_sblock_rate>;
 
     private:
         static const uint32_t k_block_size;
@@ -618,6 +623,32 @@ struct rank_result<0> {
     }
 };
 
+    template<uint8_t t_bp>
+    struct succ_trait {
+        typedef bit_vector::size_type size_type;
+        static bool uniform_bit(size_type block_size, size_type ones, size_type)
+        {
+            return block_size == ones;
+        }
+
+        static bool empty_bit(size_type block_size, size_type, size_type zeros){
+            return block_size == zeros;
+        }
+    };
+
+    template<>
+    struct succ_trait<0> {
+        typedef bit_vector::size_type size_type;
+        static size_type uniform_bit(size_type block_size, size_type, size_type zeros)
+        {
+            return block_size == zeros;
+        }
+
+        static bool empty_bit(size_type block_size, size_type ones, size_type){
+            return block_size == ones;
+        }
+    };
+
 
 //! Rank_support for the hyb_vector class
 /*!
@@ -674,9 +705,9 @@ class rank_support_hyb
             // Uniform superblock optimization.
             if ((*header_ptr32) & 0x80000000) {
                 return rank_result<t_b>::adapt(
-                           hblock_rank + sblock_rank +
-                           ((*(header_ptr8 + 1)) & 0x01) * (i - sblock_id * bit_vector_type::k_sblock_size),
-                           i);
+                        hblock_rank + sblock_rank +
+                        ((*(header_ptr8 + 1)) & 0x01) * (i - sblock_id * bit_vector_type::k_sblock_size),
+                        i);
             }
 
             // Fast forward through preceding blocks in the superblock.
@@ -700,9 +731,9 @@ class rank_support_hyb
                 uint32_t local_rank = std::min(local_i, first_run_length);
 
                 return rank_result<t_b>::adapt(
-                           hblock_rank + sblock_rank + block_rank +
-                           (special_bit * local_rank + (1 - special_bit) * (local_i - local_rank)),
-                           i);
+                        hblock_rank + sblock_rank + block_rank +
+                        (special_bit * local_rank + (1 - special_bit) * (local_i - local_rank)),
+                        i);
             }
 
             // Number of runs > 2.
@@ -713,9 +744,9 @@ class rank_support_hyb
                     while (tot < encoding_size && (*trunk_p++) < local_i) ++tot;
 
                     return rank_result<t_b>::adapt(
-                               hblock_rank + sblock_rank + block_rank +
-                               special_bit * tot + (1 - special_bit) * (local_i - tot),
-                               i);
+                            hblock_rank + sblock_rank + block_rank +
+                            special_bit * tot + (1 - special_bit) * (local_i - tot),
+                            i);
                 }
 
                 // Runs encoding.
@@ -895,6 +926,542 @@ class select_support_hyb
             return 0;
         }
 };
+
+    template<uint8_t t_b, uint32_t k_sblock_rate>
+    class succ_support_hyb
+    {
+    public:
+        typedef hyb_vector<k_sblock_rate> bit_vector_type;
+        typedef typename bit_vector_type::size_type size_type;
+        enum { bit_pat = t_b };
+        enum { bit_pat_len = (uint8_t)1 };
+    private:
+        const bit_vector_type* m_v;
+
+        size_type local_succ(size_type local_i, size_type block_id, const uint8_t* trunk_ptr, uint64_t* trunk_ptr64, uint16_t* header_ptr16) const{
+
+            uint32_t encoding_size = ((*header_ptr16) >> 10);
+            uint32_t ones = ((*header_ptr16) & 0x1ff);
+            uint32_t zeros = bit_vector_type::k_block_size - ones;
+
+            if(succ_trait<t_b>::uniform_bit(bit_vector_type::k_block_size, ones,  zeros)){
+                return local_i;
+            }
+            if(succ_trait<t_b>::empty_bit(bit_vector_type::k_block_size, ones, zeros)){
+                return bit_vector_type::k_block_size;
+            }
+
+            // Number of runs <= 2.
+            uint32_t special_bit = (((*header_ptr16) & 0x200) >> 9);
+            if (!encoding_size) {
+                uint32_t first_run_length = special_bit * ones + (1 - special_bit) * zeros;
+                if((uint8_t) (special_bit) == t_b){ //Solution in the first run
+                    if(local_i < first_run_length) {
+                        return local_i;
+                    }else{
+                        return bit_vector_type::k_block_size;
+                    }
+                }else{ //Solution in the second run
+                    return std::max(local_i, (size_type) first_run_length);
+                }
+            }
+
+            // Number of runs > 2.
+            if (encoding_size < bit_vector_type::k_block_bytes) {
+                if (std::min(ones, zeros) == encoding_size) {
+                    // Minority encoding.
+                    uint8_t keybit = (ones < zeros);
+                    uint32_t tot = 0;
+                    //Looking for the first keybit >= local_i
+                    while (tot < encoding_size && *trunk_ptr < local_i) {
+                        ++trunk_ptr;
+                        ++tot;
+                    }
+                    if(keybit == t_b){ //Easy part
+                        if(tot == encoding_size) return bit_vector_type::k_block_size;
+                        return *trunk_ptr;
+                    }else{ //Check the !t_b positions
+                        if(tot == encoding_size || local_i != *trunk_ptr) return local_i;
+                        while(tot < encoding_size-1 && (*(trunk_ptr+1) - *trunk_ptr) == 1){
+                            ++trunk_ptr;
+                            ++tot;
+                        }
+                        return *trunk_ptr+1; //TODO: check creo que se non atopa debería devolver o k_block_size
+                    }
+                }else{
+                    // Runs encoding.
+
+                    if(special_bit == t_b){
+                        uint32_t j = 0;
+                        uint32_t acc_ones = 0;
+                        int32_t last = -1;
+
+                        while (j + 1 < encoding_size && *(trunk_ptr + 1) < local_i) {
+                            acc_ones += *trunk_ptr - last; ++trunk_ptr;
+                            last = *trunk_ptr; ++trunk_ptr; j += 2;
+                        }
+                        //The first part is 111111 and the second 00000
+                        if(j+1 >= encoding_size){
+                            if(j < encoding_size) { // j == encoding_size-1
+                                if(local_i <= *(trunk_ptr)){
+                                    return local_i;
+                                }else{
+                                    acc_ones += (int32_t) *trunk_ptr - last;
+                                    auto first_one = bit_vector_type::k_block_size - (ones-acc_ones);
+                                    if (local_i < first_one) {
+                                        return first_one;
+                                    }else{
+                                        return local_i;
+                                    }
+                                }
+                            }else{ // j == encoding_size
+                                auto last_one = last + (ones - acc_ones);
+                                if(local_i <= last_one){
+                                    return local_i;
+                                }else{
+                                    return bit_vector_type::k_block_size;
+                                }
+                            }
+                        }else{
+                            if(local_i <= *trunk_ptr){
+                                return local_i;
+                            }else{
+                                return *(trunk_ptr+1)+1;
+                            }
+                        }
+                    }else{
+                        uint32_t j = 0;
+                        uint32_t acc = 0;
+                        int32_t last = -1;
+
+                        while (j + 1 < encoding_size && *(trunk_ptr + 1) < local_i) {
+                            acc += *trunk_ptr - last; ++trunk_ptr;
+                            last = *trunk_ptr; ++trunk_ptr; j += 2;
+                        }
+
+                        //The first part is 00000 and the second 11111
+                        if(j + 1 >= encoding_size){
+                            if (j < encoding_size) {  // j == encoding_size - 1
+                                acc += (int32_t) *trunk_ptr - last;
+                                auto last_one = bit_vector_type::k_block_size - (zeros - acc)-1;
+                                if(local_i > *trunk_ptr && local_i <= last_one){
+                                    return local_i;
+                                }else if (local_i <= last_one){
+                                    return *(trunk_ptr)+1;
+                                }else{
+                                    return bit_vector_type::k_block_size;
+                                }
+                            }else{
+                                auto first_one = last + (zeros-acc)+1;
+                                if (local_i > first_one) {
+                                    return local_i;
+                                } else {
+                                    return first_one;
+                                }
+                            }
+                        }else{
+                            if(local_i > *trunk_ptr){
+                                return local_i;
+                            }else{
+                                return *trunk_ptr+1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // plain encoding.
+                return bits::next(trunk_ptr64, local_i);
+            }
+        }
+
+        size_type local_succ2(size_type local_i, size_type block_id, const uint8_t* trunk_ptr, uint64_t* trunk_ptr64, uint16_t* header_ptr16) const{
+
+            uint32_t encoding_size = ((*header_ptr16) >> 10);
+            uint32_t ones = ((*header_ptr16) & 0x1ff);
+            uint32_t zeros = bit_vector_type::k_block_size - ones;
+
+            if(succ_trait<t_b>::uniform_bit(bit_vector_type::k_block_size, ones,  zeros)){
+                return local_i;
+            }
+            if(succ_trait<t_b>::empty_bit(bit_vector_type::k_block_size, ones, zeros)){
+                return bit_vector_type::k_block_size;
+            }
+
+            // Number of runs <= 2.
+            uint32_t special_bit = (((*header_ptr16) & 0x200) >> 9);
+            if (!encoding_size) {
+                uint32_t tot = 0;
+                uint32_t first_run_length = special_bit * ones + (1 - special_bit) * zeros;
+                if((uint8_t) (special_bit) == t_b){ //Solution in the first run
+                    if(local_i < first_run_length) {
+                        return local_i;
+                    }else{
+                        return bit_vector_type::k_block_size;
+                    }
+                }else{ //Solution in the second run
+                    return std::max(local_i, (size_type) first_run_length);
+                }
+            }
+
+            if (encoding_size < bit_vector_type::k_block_bytes) {
+                if (std::min(ones, zeros) == encoding_size) {
+                    // Minority encoding.
+                    uint8_t keybit = (ones < zeros);
+                    uint32_t tot = 0;
+                    //Looking for the first t_b greater than local_i
+                    while (tot < encoding_size && (*trunk_ptr) < local_i) {
+                        ++trunk_ptr;
+                        ++tot;
+                    }
+                    if(keybit == t_b){ //Easy part
+                        if(tot == encoding_size) return bit_vector_type::k_block_size;
+                        return *trunk_ptr;
+                    }else{ //Check the !t_b positions
+                        size_type interval_beg = tot ? *(trunk_ptr-1)+1 : 0;
+                        size_type interval_end = *trunk_ptr-1;
+                        //Check if local_i is contained into the first !t_b interval
+                        if(interval_beg <= local_i && local_i <= interval_end){
+                            return local_i;
+                        }
+                        //Continue with the others !t_b intervals
+                        ++trunk_ptr;
+                        ++tot;
+                        while (tot < encoding_size) {
+                            //Check if exists an interval of !t_b which ends after local_i
+                            interval_beg = *(trunk_ptr-1)+1;
+                            interval_end = *trunk_ptr-1;
+                            if(interval_beg <= interval_end){
+                                return interval_beg;
+                            }
+                            ++trunk_ptr;
+                            ++tot;
+                        }
+                        //Last interval
+                        if(*(trunk_ptr-1) < bit_vector_type::k_block_size-1){
+                            return *(trunk_ptr-1)+1;
+                        }
+                        return bit_vector_type::k_block_size;
+                    }
+                }else{
+                    if(special_bit == t_b){
+                        uint32_t j = 0;
+                        uint32_t acc_ones = 0;
+                        int32_t last = -1;
+
+                        while (j + 1 < encoding_size && *(trunk_ptr + 1) < local_i) {
+                            acc_ones += *trunk_ptr - last; ++trunk_ptr;
+                            last = *trunk_ptr; ++trunk_ptr; j += 2;
+                        }
+                        //The first part is 111111 and the second 00000
+                        if(j+1 >= encoding_size){
+                            if(j < encoding_size) { // j == encoding_size-1
+                                if(local_i <= *(trunk_ptr)){
+                                    return local_i;
+                                }else{
+                                    acc_ones += (int32_t) *trunk_ptr - last;
+                                    auto first_one = bit_vector_type::k_block_size - (ones-acc_ones);
+                                    if (local_i < first_one) {
+                                        return first_one;
+                                    }else{
+                                        return local_i;
+                                    }
+                                }
+                            }else{ // j == encoding_size
+                                auto last_one = last + (ones - acc_ones);
+                                if(local_i <= last_one){
+                                    return local_i;
+                                }else{
+                                    return bit_vector_type::k_block_size;
+                                }
+                            }
+                        }else{
+                            if(local_i <= *trunk_ptr){
+                                return local_i;
+                            }else{
+                                return *(trunk_ptr+1)+1;
+                            }
+                        }
+                    }else{
+                        uint32_t j = 0;
+                        uint32_t acc = 0;
+                        int32_t last = -1;
+
+                        while (j + 1 < encoding_size && *(trunk_ptr + 1) < local_i) {
+                            acc += *trunk_ptr - last; ++trunk_ptr;
+                            last = *trunk_ptr; ++trunk_ptr; j += 2;
+                        }
+
+                        //The first part is 00000 and the second 11111
+                        if(j + 1 >= encoding_size){
+                            if (j < encoding_size) {  // j == encoding_size - 1
+                                acc += (int32_t) *trunk_ptr - last;
+                                auto last_one = bit_vector_type::k_block_size - (zeros - acc)-1;
+                                if(local_i > *trunk_ptr && local_i <= last_one){
+                                    return local_i;
+                                }else if (local_i <= last_one){
+                                    return *(trunk_ptr)+1;
+                                }else{
+                                    return bit_vector_type::k_block_size;
+                                }
+                            }else{
+                                auto first_one = last + (zeros-acc)+1;
+                                if (local_i > first_one) {
+                                    return local_i;
+                                } else {
+                                    return first_one;
+                                }
+                            }
+                        }else{
+                            if(local_i > *trunk_ptr){
+                                return local_i;
+                            }else{
+                                return *trunk_ptr+1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // plain encoding.
+                return bits::next(trunk_ptr64, local_i);
+                //if(next >= bit_vector_type::k_block_size) return -1;
+                //return next;
+            }
+        }
+
+        size_type hb_leftmost_greater(size_type beg, size_type end, size_type hblock_rank) const{
+            // auto i = sblock_id_beg;
+            // auto j = sblock_id_end+1;
+
+            size_type diff = 1, rank;
+            while(beg + diff <= end){
+                rank = m_v->m_hblock_header[2 * (beg+diff) + 1];
+                if(rank > hblock_rank) break;
+                diff = diff << 1;
+            }
+
+            size_type hb_end = std::min(beg + diff, end);
+            size_type hb_beg = beg + (diff >> 1) + 1;
+            size_type idx;
+            while(hb_beg < hb_end){
+                idx = (hb_beg+hb_end)>>1;
+                rank = m_v->m_hblock_header[2 * idx + 1];
+                if (rank > hblock_rank){
+                    hb_end = idx;
+                }else {
+                    hb_beg = idx+1;
+                }
+            }
+            return hb_beg-1;
+        }
+
+        size_type sb_leftmost_greater(size_type beg, size_type end, size_type sblock_rank) const{
+           // auto i = sblock_id_beg;
+           // auto j = sblock_id_end+1;
+
+            size_type diff = 1, rank;
+            while(beg + diff <= end){
+                const uint8_t* header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data()))
+                        + ((beg+diff) * bit_vector_type::k_sblock_header_size);
+                uint32_t* header_ptr32 = (uint32_t*)header_ptr8;
+                rank = *(header_ptr32 + 1);
+                if(rank > sblock_rank) break;
+                diff = diff << 1;
+            }
+            size_type sb_end = std::min(beg + diff, end);
+            size_type sb_beg = beg + (diff >> 1) + 1;
+            size_type idx;
+            while(sb_beg < sb_end){
+                idx = (sb_beg+sb_end)>>1;
+                const uint8_t* header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data()))
+                                            + (idx * bit_vector_type::k_sblock_header_size);
+                uint32_t* header_ptr32 = (uint32_t*)header_ptr8;
+                rank = *(header_ptr32 + 1);
+                if (rank > sblock_rank){
+                    sb_end = idx;
+                }else {
+                    sb_beg = idx+1;
+                }
+            }
+            return sb_beg-1;
+        }
+
+
+
+    public:
+        //! Standard constructor
+        explicit succ_support_hyb(const bit_vector_type* v = nullptr)
+        {
+            set_vector(v);
+        }
+
+        //! Answers select queries
+        size_type succ(size_type i) const
+        {
+            size_type n_blocks = (m_v->m_size + bit_vector_type::k_block_size - 1) / bit_vector_type::k_block_size;
+            size_type n_sblocks = (n_blocks + k_sblock_rate - 1) / k_sblock_rate;
+            size_type n_hblocks = (n_blocks + bit_vector_type::k_hblock_rate - 1) / bit_vector_type::k_hblock_rate;
+
+            size_type block_id = i / bit_vector_type::k_block_size;
+            size_type sblock_id = block_id / k_sblock_rate;
+            size_type hblock_id = block_id / bit_vector_type::k_hblock_rate;
+
+            size_type trunk_base = m_v->m_hblock_header[2 * hblock_id];
+            size_type hblock_rank = m_v->m_hblock_header[2 * hblock_id + 1];
+
+            uint32_t off = i - block_id * bit_vector_type::k_block_size;
+            // Read superblock header.
+            const uint8_t* header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) + (sblock_id * bit_vector_type::k_sblock_header_size);
+            uint32_t* header_ptr32 = (uint32_t*)header_ptr8;
+            size_type trunk_ptr = trunk_base + ((*header_ptr32) & 0x3fffffff);
+            size_type sblock_rank = *(header_ptr32 + 1);
+            header_ptr8 += 8;
+            uint16_t* header_ptr16 = (uint16_t*)header_ptr8;
+
+            // Uniform superblock optimization.
+            if (((*header_ptr32) & 0x80000000) && ((*(header_ptr8 + 1)) & 0x01) == t_b) {
+                return i;
+            }
+
+            // Fast-forward through preceding blocks in the superblock.
+            for (size_type j = sblock_id * k_sblock_rate; j != block_id; ++j) {
+                trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
+                ++header_ptr16;
+            }
+            const uint8_t* trunk_p = ((const uint8_t*) m_v->m_trunk.data()) + trunk_ptr;
+            uint64_t* trunk_ptr64 = (uint64_t*)(((uint8_t*) m_v->m_trunk.data()) + trunk_ptr);
+
+            size_type local_i = local_succ(off, block_id, trunk_p, trunk_ptr64, header_ptr16);
+            if(local_i < bit_vector_type::k_block_size){
+                return block_id * bit_vector_type::k_block_size + local_i;
+            }else{
+                //Not found. Try with the rest of blocks within the superblock
+                off = 0;
+                trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
+                ++header_ptr16;
+                ++block_id;
+                while (block_id < (sblock_id +1)* k_sblock_rate) {
+                    //while (block_id+1 < n_blocks) {
+                    if(((*header_ptr16) & 0x1ff) > 0){
+                        trunk_p = ((const uint8_t*) m_v->m_trunk.data()) + trunk_ptr;
+                        trunk_ptr64 = (uint64_t*)(((uint8_t*) m_v->m_trunk.data()) + trunk_ptr);
+                        return block_id * bit_vector_type::k_block_size + local_succ(off, block_id, trunk_p, trunk_ptr64, header_ptr16);
+                    }
+                    trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
+                    ++header_ptr16;
+                    ++block_id;
+
+                }
+                //Not found. Try with the rest of superblocks
+                //sblock_id = upper_bound(sblock_id+1, n_sblocks-1, aux_sblock_rank);
+                if(sblock_id+1 == n_sblocks) return m_v->size();
+
+                //Getting number of ones up contained within sblock_id (stored at sblock_id+1)
+                header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) + ((sblock_id+1) * bit_vector_type::k_sblock_header_size);
+                header_ptr32 = (uint32_t*)header_ptr8;
+                sblock_rank = *(header_ptr32 + 1);
+                //Getting the last sblock in the current hblock
+                size_type end_sb = std::min((hblock_id+1)* (bit_vector_type::k_hblock_rate/k_sblock_rate)-1, n_sblocks-1);
+
+                sblock_id = sb_leftmost_greater(sblock_id, end_sb, sblock_rank);
+                if(sblock_id >= n_sblocks) return m_v->size();
+                if(sblock_id <= end_sb){
+                    block_id = sblock_id * k_sblock_rate;
+                    header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) + (sblock_id * bit_vector_type::k_sblock_header_size);
+                    header_ptr32 = (uint32_t*)header_ptr8;
+                   // hblock_id = block_id / bit_vector_type::k_hblock_rate;
+                   // trunk_base = m_v->m_hblock_header[2 * hblock_id];
+                    trunk_ptr = trunk_base + ((*header_ptr32) & 0x3fffffff);
+                    header_ptr8 += 8;
+                    header_ptr16 = (uint16_t*)header_ptr8;
+                    //Found inside a superblock. Look for the correct block
+                    while (block_id < (sblock_id +1)* k_sblock_rate) {
+                        if(((*header_ptr16) & 0x1ff) > 0){
+                            trunk_p = ((const uint8_t*) m_v->m_trunk.data()) + trunk_ptr;
+                            trunk_ptr64 = (uint64_t*)(((uint8_t*) m_v->m_trunk.data()) + trunk_ptr);
+                            return block_id * bit_vector_type::k_block_size + local_succ(off, block_id, trunk_p, trunk_ptr64, header_ptr16);
+                        }
+                        trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
+                        ++header_ptr16;
+                        ++block_id;
+                    }
+                }
+                //Not found. Try with the rest of hyperblocks
+                if(hblock_id + 1 == n_hblocks) return m_v->size();
+                hblock_rank = m_v->m_hblock_header[2 * (hblock_id+1) + 1];
+                hblock_id = hb_leftmost_greater(hblock_id, n_hblocks-1, hblock_rank);
+                if(hblock_id == n_hblocks) return m_v->size();
+                sblock_id = (hblock_id * bit_vector_type::k_hblock_rate) / k_sblock_rate;
+                end_sb = std::min((hblock_id+1)* (bit_vector_type::k_hblock_rate/k_sblock_rate)-1, n_sblocks-1);
+                sblock_id = sb_leftmost_greater(sblock_id, end_sb, 0);
+                block_id = sblock_id * k_sblock_rate;
+                header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) + (sblock_id * bit_vector_type::k_sblock_header_size);
+                header_ptr32 = (uint32_t*)header_ptr8;
+                trunk_base = m_v->m_hblock_header[2 * hblock_id];
+                trunk_ptr = trunk_base + ((*header_ptr32) & 0x3fffffff);
+                header_ptr8 += 8;
+                header_ptr16 = (uint16_t*) header_ptr8;
+                //Found inside a superblock. Look for the correct block
+                while (block_id < (sblock_id +1)* k_sblock_rate) {
+                    if(((*header_ptr16) & 0x1ff) > 0){
+                        trunk_p = ((const uint8_t*) m_v->m_trunk.data()) + trunk_ptr;
+                        trunk_ptr64 = (uint64_t*)(((uint8_t*) m_v->m_trunk.data()) + trunk_ptr);
+                        return block_id * bit_vector_type::k_block_size + local_succ(off, block_id, trunk_p, trunk_ptr64, header_ptr16);
+                    }
+                    trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
+                    ++header_ptr16;
+                    ++block_id;
+                }
+
+            }
+            return m_v->size();
+
+
+        }
+
+        //! Shorthand for select(i)
+        const size_type operator()(size_type i) const
+        {
+            return succ(i);
+        }
+
+        //! Return the size of the original vector
+        const size_type size() const
+        {
+            return m_v->size();
+        }
+
+        //! Set the supported vector
+        void set_vector(const bit_vector_type* v = nullptr)
+        {
+            m_v = v;
+        }
+
+        //! Assignment operator
+        succ_support_hyb& operator=(const succ_support_hyb& rs)
+        {
+            if (this != &rs) {
+                set_vector(rs.m_v);
+            }
+            return *this;
+        }
+
+        //! Swap method
+        void swap(succ_support_hyb&) {}
+
+        //! Load the data structure from a stream and set the supported vector
+        void load(std::istream&, const bit_vector_type* v = nullptr)
+        {
+            set_vector(v);
+        }
+
+        //! Serializes the data structure into a stream
+        size_type serialize(std::ostream&, structure_tree_node* v = nullptr, std::string name = "") const
+        {
+            structure_tree_node* child = structure_tree::add_child(v, name, sdsl::util::class_name(*this));
+            structure_tree::add_size(child, 0);
+            return 0;
+        }
+    };
 
 }  // end namespace sdsl
 

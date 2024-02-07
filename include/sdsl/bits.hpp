@@ -239,6 +239,9 @@ struct bits {
 
     //! reverses a given 64 bit word
     static uint64_t rev(uint64_t x);
+
+    //! Get the first one bit in the interval \f$[beg..end)\f$
+    static uint64_t next(const uint64_t* word, uint64_t beg, uint64_t end);
 };
 
 
@@ -628,6 +631,23 @@ inline uint64_t bits::rev(uint64_t x)
     x = ((x & 0x0000FFFF0000FFFFULL) <<16) | ((x & 0xFFFF0000FFFF0000ULL) >>16);
     x = ((x & 0x00000000FFFFFFFFULL) <<32) | ((x & 0xFFFFFFFF00000000ULL) >>32);
     return x;
+}
+
+inline uint64_t bits::next(const uint64_t *word, uint64_t beg, uint64_t end) {
+    word += (beg>>6);
+    if (*word & ~sdsl::bits::lo_set[beg&0x3F]) {
+        return (beg & ~((size_t)0x3F)) + sdsl::bits::lo(*word & ~sdsl::bits::lo_set[beg&0x3F]);
+    }
+    beg = (beg & ~((size_t)0x3F)) + 64;
+    ++word;
+    while (*word==0 && beg < end) {
+        beg += 64;
+        ++word;
+    }
+    if(beg < end) {
+        return beg + sdsl::bits::lo(*word);
+    }
+    return end;
 }
 
 } // end namespace sdsl

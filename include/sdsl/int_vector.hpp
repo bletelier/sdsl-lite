@@ -99,6 +99,10 @@ class select_support;
 template<uint8_t t_bit_pattern, uint8_t t_pattern_len>
 class select_support_mcl;
 
+template<uint8_t b>  // forward declaration
+class succ_support_v;
+
+
 namespace coder
 {
 class fibonacci;
@@ -305,6 +309,8 @@ class int_vector
         typedef rank_support_v<0,1>                                 rank_0_type;
         typedef select_support_mcl<1,1>                             select_1_type;
         typedef select_support_mcl<0,1>                             select_0_type;
+        typedef succ_support_v<1>                                   succ_1_type;
+        typedef succ_support_v<0>                                   succ_0_type;
         typedef typename int_vec_category_trait<t_width>::type      index_category;
 
         friend struct int_vector_trait<t_width>;
