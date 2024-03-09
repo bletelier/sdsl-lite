@@ -775,6 +775,7 @@ class select_support_rrr<t_b, 15, t_rac, t_k>
 
                 //(3) sb_beg-th block contains the next 1-bit
                 sample_pos = sb_beg-1;
+                if(sample_pos == m_v->m_invert.size()) return m_v->size();
                 uint64_t end = std::min((sample_pos+1)*t_k, m_v->bt.size());
                 bool inv = m_v->m_invert[sample_pos];
                 btnrp = m_v->m_btnrp[ sample_pos ];
