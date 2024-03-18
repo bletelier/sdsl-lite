@@ -1241,48 +1241,50 @@ class select_support_hyb
 
             size_type hb_end = std::min(beg + diff, end);
             size_type hb_beg = beg + (diff >> 1) + 1;
-            size_type idx;
-            while(hb_beg < hb_end){
+            size_type idx, r = hb_beg;
+            while(hb_beg <= hb_end){
                 idx = (hb_beg+hb_end)>>1;
                 rank = m_v->m_hblock_header[2 * idx + 1];
                 if (rank > hblock_rank){
-                    hb_end = idx;
+                    r = idx;
+                    hb_end = idx-1;
                 }else {
                     hb_beg = idx+1;
                 }
             }
-            return hb_beg-1;
+            return r;
         }
 
         size_type sb_leftmost_greater(size_type beg, size_type end, size_type sblock_rank) const{
-           // auto i = sblock_id_beg;
-           // auto j = sblock_id_end+1;
-
-            size_type diff = 1, rank;
-            while(beg + diff <= end){
-                const uint8_t* header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data()))
-                        + ((beg+diff) * bit_vector_type::k_sblock_header_size);
+            size_type rank;
+            size_type diff = 2, sb_beg = beg+1, sb_end= beg+diff;
+            while(sb_end <= end){
+                const uint8_t* header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) +
+                                             (sb_end * bit_vector_type::k_sblock_header_size);
                 uint32_t* header_ptr32 = (uint32_t*)header_ptr8;
                 rank = *(header_ptr32 + 1);
                 if(rank > sblock_rank) break;
                 diff = diff << 1;
+                sb_beg = sb_end;
+                sb_end = beg + diff;
             }
-            size_type sb_end = std::min(beg + diff, end);
-            size_type sb_beg = beg + (diff >> 1) + 1;
             size_type idx;
-            while(sb_beg < sb_end){
+            size_type r = end; //se non hai, pode haber no ultimo
+            sb_end = std::min(sb_end, end);
+            while(sb_beg <= sb_end){
                 idx = (sb_beg+sb_end)>>1;
                 const uint8_t* header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data()))
-                                            + (idx * bit_vector_type::k_sblock_header_size);
+                                             + (idx * bit_vector_type::k_sblock_header_size);
                 uint32_t* header_ptr32 = (uint32_t*)header_ptr8;
                 rank = *(header_ptr32 + 1);
                 if (rank > sblock_rank){
-                    sb_end = idx;
+                    r = idx-1;
+                    sb_end = idx-1;
                 }else {
                     sb_beg = idx+1;
                 }
             }
-            return sb_beg-1;
+            return r;
         }
 
 
@@ -1363,27 +1365,24 @@ class select_support_hyb
                 size_type end_sb = std::min((hblock_id+1)* (bit_vector_type::k_hblock_rate/k_sblock_rate)-1, n_sblocks-1);
 
                 sblock_id = sb_leftmost_greater(sblock_id, end_sb, sblock_rank);
-                if(sblock_id >= n_sblocks) return m_v->size();
-                if(sblock_id <= end_sb){
-                    block_id = sblock_id * k_sblock_rate;
-                    header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) + (sblock_id * bit_vector_type::k_sblock_header_size);
-                    header_ptr32 = (uint32_t*)header_ptr8;
-                   // hblock_id = block_id / bit_vector_type::k_hblock_rate;
-                   // trunk_base = m_v->m_hblock_header[2 * hblock_id];
-                    trunk_ptr = trunk_base + ((*header_ptr32) & 0x3fffffff);
-                    header_ptr8 += 8;
-                    header_ptr16 = (uint16_t*)header_ptr8;
-                    //Found inside a superblock. Look for the correct block
-                    while (block_id < (sblock_id +1)* k_sblock_rate) {
-                        if(((*header_ptr16) & 0x1ff) > 0){
-                            trunk_p = ((const uint8_t*) m_v->m_trunk.data()) + trunk_ptr;
-                            trunk_ptr64 = (uint64_t*)(((uint8_t*) m_v->m_trunk.data()) + trunk_ptr);
-                            return block_id * bit_vector_type::k_block_size + local_succ(off, block_id, trunk_p, trunk_ptr64, header_ptr16);
-                        }
-                        trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
-                        ++header_ptr16;
-                        ++block_id;
+                block_id = sblock_id * k_sblock_rate;
+                header_ptr8 = ((const uint8_t*)(m_v->m_sblock_header.data())) + (sblock_id * bit_vector_type::k_sblock_header_size);
+                header_ptr32 = (uint32_t*)header_ptr8;
+               // hblock_id = block_id / bit_vector_type::k_hblock_rate;
+               // trunk_base = m_v->m_hblock_header[2 * hblock_id];
+                trunk_ptr = trunk_base + ((*header_ptr32) & 0x3fffffff);
+                header_ptr8 += 8;
+                header_ptr16 = (uint16_t*)header_ptr8;
+                //Found inside a superblock. Look for the correct block
+                while (block_id < (sblock_id +1)* k_sblock_rate) {
+                    if(((*header_ptr16) & 0x1ff) > 0){
+                        trunk_p = ((const uint8_t*) m_v->m_trunk.data()) + trunk_ptr;
+                        trunk_ptr64 = (uint64_t*)(((uint8_t*) m_v->m_trunk.data()) + trunk_ptr);
+                        return block_id * bit_vector_type::k_block_size + local_succ(off, block_id, trunk_p, trunk_ptr64, header_ptr16);
                     }
+                    trunk_ptr += ((*header_ptr16) >> 10);     // Update trunk pointer.
+                    ++header_ptr16;
+                    ++block_id;
                 }
                 //Not found. Try with the rest of hyperblocks
                 if(hblock_id + 1 == n_hblocks) return m_v->size();
