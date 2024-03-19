@@ -126,6 +126,9 @@ namespace sdsl {
         void set_vector(const bit_vector_type* v=nullptr)
         {
             m_v = v;
+            if(m_v != nullptr){
+                m_succ_high.set_vector(&(m_v->high));
+            }
         }
 
         succ_support_sd(const succ_support_sd& p){
