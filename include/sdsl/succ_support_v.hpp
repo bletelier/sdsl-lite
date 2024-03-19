@@ -68,9 +68,7 @@ namespace sdsl {
 
     public:
 
-        succ_support_v(){};
-
-        succ_support_v(const sdsl::bit_vector* v) {
+        succ_support_v(const sdsl::bit_vector* v = nullptr) {
             set_vector(v);
             if (v == nullptr || v->empty()) {
                 //m_basic_blocks = sdsl::int_vector<>(1 ,0, 1);
@@ -151,7 +149,7 @@ namespace sdsl {
             return m_v->size();
         }
 
-        void set_vector(const sdsl::bit_vector* v=nullptr) {
+        void set_vector(const sdsl::bit_vector* v) {
             m_v = v;
         }
 
@@ -180,8 +178,8 @@ namespace sdsl {
         }
     };
 
-     template <uint8_t t_b>
-     inline uint64_t succ_support_v<t_b>::succ(const size_type idx)const {
+    template <uint8_t t_b>
+    inline uint64_t succ_support_v<t_b>::succ(const size_type idx)const {
         /* assert(m_v != nullptr);
          assert(idx <= m_v->size());*/
         if(idx == m_v->size()) return m_v->size();

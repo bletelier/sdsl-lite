@@ -75,12 +75,11 @@ namespace sdsl {
         }
     public:
 
-        succ_support_sd(){};
-
-        explicit succ_support_sd(const bit_vector_type* v)
+        explicit succ_support_sd(const bit_vector_type* v = nullptr)
         {
-            set_vector(v);
-            if(v != nullptr){
+
+            m_v = v;
+            if(m_v != nullptr){
                 sdsl::util::init_support(m_succ_high, &(m_v->high));
             }
         }
@@ -160,7 +159,6 @@ namespace sdsl {
         }
 
         void swap(succ_support_sd& ss) {
-            std::swap(m_v, ss.m_v);
             m_succ_high.swap(ss.m_succ_high);
             if(m_v != nullptr){
                 m_succ_high.set_vector(&(m_v->high));
@@ -172,13 +170,16 @@ namespace sdsl {
             }else{
                 ss.m_succ_high.set_vector(nullptr);
             }
+
         }
 
         void load(std::istream& in, const bit_vector_type* v=nullptr)
         {
-            set_vector(v);
+            m_v = v;
             if(m_v != nullptr){
                 m_succ_high.load(in, &(m_v->high));
+            }else{
+                m_succ_high.load(in);
             }
 
         }
