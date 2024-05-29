@@ -911,6 +911,10 @@ class select_support_hyb
             return m_rank->size();
         }
 
+        void set_rank(const rank_type* rank){
+            m_rank = rank;
+        }
+
         //! Assignment operator
         select_support_hyb& operator=(const select_support_hyb& rs)
         {
@@ -922,6 +926,7 @@ class select_support_hyb
 
         //! Swap method
         void swap(select_support_hyb&) {}
+
 
         //! Load the data structure from a stream and set the supported vector
         void load(std::istream&, const rank_type* rank)
@@ -951,7 +956,8 @@ class select_support_hyb
     class succ_support_hyb
     {
     public:
-        typedef hyb_vector<k_sblock_rate> bit_vector_type;
+        typedef hyb_vector<k_sblock_rate>
+                bit_vector_type;
         typedef typename bit_vector_type::size_type size_type;
         enum { bit_pat = t_b };
         enum { bit_pat_len = (uint8_t)1 };
