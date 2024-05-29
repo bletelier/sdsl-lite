@@ -862,49 +862,60 @@ class select_support_hyb
 {
     public:
         typedef hyb_vector<k_sblock_rate> bit_vector_type;
+        typedef rank_support_hyb<t_b, k_sblock_rate> rank_type;
         typedef typename bit_vector_type::size_type size_type;
         enum { bit_pat = t_b };
         enum { bit_pat_len = (uint8_t)1 };
     private:
-        const bit_vector_type* m_v;
+        const rank_type* m_rank;
 
     public:
         //! Standard constructor
         explicit select_support_hyb(const bit_vector_type* v = nullptr)
-        {
-            set_vector(v);
+        { }
+
+        explicit select_support_hyb(const rank_type* r){
+            m_rank = r;
         }
 
         //! Answers select queries
-        size_type select(size_type) const
+        //! Answers select queries
+        size_type select(size_type i) const
         {
-            fprintf(stderr, "\nhyb_vector: select queries are not currently supported\n");
-            std::exit(EXIT_FAILURE);
+            //fprintf(stderr, "\nzombit_vector: select queries are not currently supported\n");
+            //std::exit(EXIT_FAILURE);
+
+            uint64_t l = 0, r = m_rank->size()-1;
+            uint64_t mid, cnt;
+            while(l < r){
+                mid = (l + r) >> 1;
+                cnt = m_rank->rank(mid+1);
+                if(cnt < i){
+                    l = mid + 1;
+                }else{
+                    r = mid;
+                }
+            }
+            return l;
         }
 
         //! Shorthand for select(i)
-        const size_type operator()(size_type i) const
+        size_type operator()(size_type i) const
         {
             return select(i);
         }
 
         //! Return the size of the original vector
-        const size_type size() const
+        size_type size() const
         {
-            return m_v->size();
-        }
-
-        //! Set the supported vector
-        void set_vector(const bit_vector_type* v = nullptr)
-        {
-            m_v = v;
+            return m_rank->size();
         }
 
         //! Assignment operator
         select_support_hyb& operator=(const select_support_hyb& rs)
         {
             if (this != &rs) {
-                set_vector(rs.m_v);
+                m_rank = rs.m_rank;
             }
             return *this;
         }
@@ -913,16 +924,25 @@ class select_support_hyb
         void swap(select_support_hyb&) {}
 
         //! Load the data structure from a stream and set the supported vector
-        void load(std::istream&, const bit_vector_type* v = nullptr)
+        void load(std::istream&, const rank_type* rank)
         {
-            set_vector(v);
+            m_rank = rank;
+        }
+
+        //! Load the data structure from a stream and set the supported vector
+        void load(std::istream&, const bit_vector_type* bv)
+        {
+        }
+
+        void set_vector(const bit_vector_type* bv){
+
         }
 
         //! Serializes the data structure into a stream
-        size_type serialize(std::ostream&, structure_tree_node* v = nullptr, std::string name = "") const
+        size_type serialize(std::ostream&, sdsl::structure_tree_node* v = nullptr, std::string name = "") const
         {
-            structure_tree_node* child = structure_tree::add_child(v, name, util::class_name(*this));
-            structure_tree::add_size(child, 0);
+            sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
+            sdsl::structure_tree::add_size(child, 0);
             return 0;
         }
 };
