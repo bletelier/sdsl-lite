@@ -75,7 +75,7 @@ namespace sdsl {
         }
     public:
 
-        explicit succ_support_sd(const bit_vector_type* v = nullptr)
+        succ_support_sd(const bit_vector_type* v = nullptr)
         {
 
             m_v = v;
