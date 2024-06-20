@@ -53,7 +53,7 @@ if [ $? != 0 ]; then
 	exit 1
 fi
 
-arch -x86_64 /usr/local/bin/cmake -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_PREFIX="${SDSL_INSTALL_PREFIX}" .. # run cmake 
+cmake -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_PREFIX="${SDSL_INSTALL_PREFIX}" .. # run cmake 
 if [ $? != 0 ]; then
 	echo "ERROR: CMake build failed."
 	exit 1
